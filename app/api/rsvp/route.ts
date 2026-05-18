@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import fs from 'fs'
-import path from 'path'
+import { kv } from '@vercel/kv'
 
 type Slot = 'bowling' | 'full' | 'karaoke'
 
@@ -11,20 +10,17 @@ interface RSVP {
   createdAt: string
 }
 
-const DATA_FILE = path.join(process.cwd(), 'data', 'rsvps.json')
-
-function readAll(): RSVP[] {
+async function readAll(): Promise<RSVP[]> {
   try {
-    return JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'))
+    const data = await kv.get<RSVP[]>('rsvps')
+    return data ?? []
   } catch {
     return []
   }
 }
 
-function saveAll(rsvps: RSVP[]): void {
-  const dir = path.dirname(DATA_FILE)
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-  fs.writeFileSync(DATA_FILE, JSON.stringify(rsvps, null, 2))
+async function saveAll(rsvps: RSVP[]): Promise<void> {
+  await kv.set('rsvps', rsvps)
 }
 
 export async function POST(req: NextRequest) {
@@ -35,38 +31,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid data' }, { status: 400 })
   }
 
-  const rsvps = readAll()
-  rsvps.push({
+  const rsvps = await readAll()
+  const entry: RSVP = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     name: name.trim(),
     slot: slot as Slot,
     createdAt: new Date().toISOString(),
-  })
-  saveAll(rsvps)
+  }
+  rsvps.push(entry)
+  await saveAll(rsvps)
 
-  const entry = rsvps[rsvps.length - 1]
   return NextResponse.json({ ok: true, id: entry.id })
 }
 
 export async function DELETE(req: NextRequest) {
-  const body = await req.json()
-  const { id } = body as { id?: string }
+  const { id } = await req.json()
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
-  const rsvps = readAll()
+  const rsvps = await readAll()
   const filtered = rsvps.filter(r => r.id !== id)
   if (filtered.length === rsvps.length) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
-  saveAll(filtered)
+  await saveAll(filtered)
   return NextResponse.json({ ok: true })
 }
 
 export async function GET() {
-  const rsvps = readAll()
-
+  const rsvps = await readAll()
   const bowlingCount = rsvps.filter(r => r.slot === 'bowling' || r.slot === 'full').length
   const karaokeCount = rsvps.filter(r => r.slot === 'karaoke' || r.slot === 'full').length
-
   return NextResponse.json({ rsvps, bowlingCount, karaokeCount, total: rsvps.length })
 }
