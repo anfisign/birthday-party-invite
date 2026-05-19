@@ -19,9 +19,9 @@ interface Data {
 }
 
 const SLOT_LABELS: Record<Slot, string> = {
-  bowling: '🎳 Short Lane (5–7 PM)',
-  full:    '🎳🎤 Long Lane (5–9 PM)',
-  karaoke: '🎤 Late arrival (7–9 PM)',
+  bowling: '🎳 Just bowling (5–7 PM)',
+  full:    '🎳🎤 The whole night (5–9 PM)',
+  karaoke: '🎤 Just karaoke (7–9 PM)',
 }
 
 const SLOT_COLOR: Record<Slot, string> = {
@@ -34,6 +34,73 @@ const SLOT_TEXT: Record<Slot, string> = {
   bowling: '#92400e',
   full:    '#9d174d',
   karaoke: '#5b21b6',
+}
+
+function RSVPRow({ rsvp, onDeleted }: { rsvp: RSVP; onDeleted: (id: string) => void }) {
+  const [confirm, setConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  async function handleDelete() {
+    setDeleting(true)
+    try {
+      await fetch('/api/rsvp', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: rsvp.id }),
+      })
+      onDeleted(rsvp.id)
+    } finally {
+      setDeleting(false)
+      setConfirm(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center px-5 py-3 gap-3">
+      <div className="flex-1 min-w-0">
+        <p className="text-[14px] font-semibold text-gray-900">{rsvp.name}</p>
+        <p className="text-[11px] text-gray-400 mt-0.5">
+          {new Date(rsvp.createdAt).toLocaleDateString('en-GB', {
+            day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+          })}
+        </p>
+      </div>
+      <span
+        className="text-[11px] font-semibold px-2.5 py-1 rounded-full shrink-0"
+        style={{ backgroundColor: SLOT_COLOR[rsvp.slot], color: SLOT_TEXT[rsvp.slot] }}
+      >
+        {SLOT_LABELS[rsvp.slot]}
+      </span>
+
+      {/* Delete button */}
+      {!confirm ? (
+        <button
+          onClick={() => setConfirm(true)}
+          className="w-6 h-6 rounded-full flex items-center justify-center text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors shrink-0"
+          title="Remove RSVP"
+        >
+          ✕
+        </button>
+      ) : (
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className="text-[11px] text-gray-500">Remove?</span>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="text-[11px] font-bold text-white bg-red-500 hover:bg-red-600 px-2 py-0.5 rounded-full transition-colors disabled:opacity-50"
+          >
+            {deleting ? '…' : 'Yes'}
+          </button>
+          <button
+            onClick={() => setConfirm(false)}
+            className="text-[11px] font-medium text-gray-400 hover:text-gray-600 px-2 py-0.5 rounded-full transition-colors"
+          >
+            No
+          </button>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function Admin() {
@@ -49,6 +116,14 @@ export default function Admin() {
   }, [])
 
   useEffect(() => { refresh() }, [refresh])
+
+  function handleDeleted(id: string) {
+    if (!data) return
+    const updated = data.rsvps.filter(r => r.id !== id)
+    const bowlingCount = updated.filter(r => r.slot === 'bowling' || r.slot === 'full').length
+    const karaokeCount = updated.filter(r => r.slot === 'karaoke' || r.slot === 'full').length
+    setData({ rsvps: updated, bowlingCount, karaokeCount, total: updated.length })
+  }
 
   return (
     <main className="min-h-screen bg-gray-50 p-6">
@@ -81,9 +156,7 @@ export default function Admin() {
 
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
               <div className="px-5 py-3 border-b border-gray-50">
-                <p className="text-[12px] font-semibold text-gray-400 uppercase tracking-wider">
-                  By option
-                </p>
+                <p className="text-[12px] font-semibold text-gray-400 uppercase tracking-wider">By option</p>
               </div>
               {(['bowling', 'full', 'karaoke'] as Slot[]).map(s => {
                 const count = data.rsvps.filter(r => r.slot === s).length
@@ -103,9 +176,7 @@ export default function Admin() {
 
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="px-5 py-3 border-b border-gray-50">
-                <p className="text-[12px] font-semibold text-gray-400 uppercase tracking-wider">
-                  All responses
-                </p>
+                <p className="text-[12px] font-semibold text-gray-400 uppercase tracking-wider">All responses</p>
               </div>
 
               {data.rsvps.length === 0 ? (
@@ -115,25 +186,7 @@ export default function Admin() {
               ) : (
                 <div className="divide-y divide-gray-50">
                   {[...data.rsvps].reverse().map(rsvp => (
-                    <div key={rsvp.id} className="flex items-center px-5 py-3 gap-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[14px] font-semibold text-gray-900">{rsvp.name}</p>
-                        <p className="text-[11px] text-gray-400 mt-0.5">
-                          {new Date(rsvp.createdAt).toLocaleDateString('en-GB', {
-                            day: 'numeric',
-                            month: 'short',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </p>
-                      </div>
-                      <span
-                        className="text-[11px] font-semibold px-2.5 py-1 rounded-full shrink-0"
-                        style={{ backgroundColor: SLOT_COLOR[rsvp.slot], color: SLOT_TEXT[rsvp.slot] }}
-                      >
-                        {SLOT_LABELS[rsvp.slot]}
-                      </span>
-                    </div>
+                    <RSVPRow key={rsvp.id} rsvp={rsvp} onDeleted={handleDeleted} />
                   ))}
                 </div>
               )}
@@ -145,14 +198,8 @@ export default function Admin() {
   )
 }
 
-function StatCard({
-  emoji, value, label, sub, color,
-}: {
-  emoji: string
-  value: number
-  label: string
-  sub?: string
-  color: string
+function StatCard({ emoji, value, label, sub, color }: {
+  emoji: string; value: number; label: string; sub?: string; color: string
 }) {
   return (
     <div className="rounded-2xl p-4 shadow-sm border border-gray-100" style={{ backgroundColor: color }}>
